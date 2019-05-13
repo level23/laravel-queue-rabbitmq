@@ -1,6 +1,6 @@
 <?php
 
-namespace VladimirYuldashev\LaravelQueueRabbitMQ\Queue;
+namespace Level23\Rabbit\Queue;
 
 use Interop\Amqp\AmqpQueue;
 use Interop\Amqp\AmqpTopic;
@@ -11,32 +11,32 @@ use Interop\Amqp\AmqpConsumer;
 use Interop\Amqp\AmqpProducer;
 use PHPUnit\Framework\TestCase;
 use Illuminate\Container\Container;
-use VladimirYuldashev\LaravelQueueRabbitMQ\Queue\Jobs\RabbitMQJob;
+use Level23\Rabbit\Queue\Jobs\RabbitJob;
 
-class RabbitMQQueueTest extends TestCase
+class RabbitQueueTest extends TestCase
 {
     public function testShouldImplementQueueInterface()
     {
-        $rc = new \ReflectionClass(RabbitMQQueue::class);
+        $rc = new \ReflectionClass(RabbitQueue::class);
 
         $this->assertTrue($rc->implementsInterface(\Illuminate\Contracts\Queue\Queue::class));
     }
 
     public function testShouldBeSubClassOfQueue()
     {
-        $rc = new \ReflectionClass(RabbitMQQueue::class);
+        $rc = new \ReflectionClass(RabbitQueue::class);
 
         $this->assertTrue($rc->isSubclassOf(\Illuminate\Queue\Queue::class));
     }
 
     public function testCouldBeConstructedWithExpectedArguments()
     {
-        new RabbitMQQueue($this->createAmqpContext(), $this->createDummyConfig());
+        new RabbitQueue($this->createAmqpContext(), $this->createDummyConfig());
     }
 
     public function testShouldGenerateNewCorrelationIdIfNotSet()
     {
-        $queue = new RabbitMQQueue($this->createAmqpContext(), $this->createDummyConfig());
+        $queue = new RabbitQueue($this->createAmqpContext(), $this->createDummyConfig());
 
         $firstId = $queue->getCorrelationId();
         $secondId = $queue->getCorrelationId();
@@ -50,7 +50,7 @@ class RabbitMQQueueTest extends TestCase
     {
         $expectedId = 'theCorrelationId';
 
-        $queue = new RabbitMQQueue($this->createAmqpContext(), $this->createDummyConfig());
+        $queue = new RabbitQueue($this->createAmqpContext(), $this->createDummyConfig());
 
         $queue->setCorrelationId($expectedId);
 
@@ -62,7 +62,7 @@ class RabbitMQQueueTest extends TestCase
     {
         $context = $this->createAmqpContext();
 
-        $queue = new RabbitMQQueue($context, $this->createDummyConfig());
+        $queue = new RabbitQueue($context, $this->createDummyConfig());
 
         $this->assertSame($context, $queue->getContext());
     }
@@ -89,7 +89,7 @@ class RabbitMQQueueTest extends TestCase
             ->with($this->identicalTo($queue))
             ->willReturn($expectedCount);
 
-        $queue = new RabbitMQQueue($context, $this->createDummyConfig());
+        $queue = new RabbitQueue($context, $this->createDummyConfig());
         $queue->setContainer($this->createDummyContainer());
 
         $this->assertSame($expectedCount, $queue->size($expectedQueueName));
@@ -116,7 +116,7 @@ class RabbitMQQueueTest extends TestCase
                 $this->assertSame('application/json', $message->getContentType());
                 $this->assertSame(AmqpMessage::DELIVERY_MODE_PERSISTENT, $message->getDeliveryMode());
                 $this->assertNotEmpty($message->getCorrelationId());
-                $this->assertNull($message->getProperty(RabbitMQJob::ATTEMPT_COUNT_HEADERS_KEY));
+                $this->assertNull($message->getProperty(RabbitJob::ATTEMPT_COUNT_HEADERS_KEY));
             });
         $producer
             ->expects($this->never())
@@ -143,7 +143,7 @@ class RabbitMQQueueTest extends TestCase
             ->method('createProducer')
             ->willReturn($producer);
 
-        $queue = new RabbitMQQueue($context, $this->createDummyConfig());
+        $queue = new RabbitQueue($context, $this->createDummyConfig());
         $queue->setContainer($this->createDummyContainer());
 
         $queue->pushRaw('thePayload', $expectedQueueName);
@@ -161,7 +161,7 @@ class RabbitMQQueueTest extends TestCase
             ->method('send')
             ->with($this->identicalTo($topic), $this->isInstanceOf(AmqpMessage::class))
             ->willReturnCallback(function ($actualTopic, AmqpMessage $message) use ($expectedAttempts) {
-                $this->assertSame($expectedAttempts, $message->getProperty(RabbitMQJob::ATTEMPT_COUNT_HEADERS_KEY));
+                $this->assertSame($expectedAttempts, $message->getProperty(RabbitJob::ATTEMPT_COUNT_HEADERS_KEY));
             });
         $producer
             ->expects($this->never())
@@ -186,7 +186,7 @@ class RabbitMQQueueTest extends TestCase
             ->method('createProducer')
             ->willReturn($producer);
 
-        $queue = new RabbitMQQueue($context, $this->createDummyConfig());
+        $queue = new RabbitQueue($context, $this->createDummyConfig());
         $queue->setContainer($this->createDummyContainer());
 
         $queue->pushRaw('thePayload', 'aQueue', ['attempts' => $expectedAttempts]);
@@ -227,55 +227,10 @@ class RabbitMQQueueTest extends TestCase
             ->method('createProducer')
             ->willReturn($producer);
 
-        $queue = new RabbitMQQueue($context, $this->createDummyConfig());
+        $queue = new RabbitQueue($context, $this->createDummyConfig());
         $queue->setContainer($this->createDummyContainer());
 
         $queue->pushRaw('thePayload', 'aQueue', ['delay' => $expectedDelay]);
-    }
-
-    public function testShouldLogExceptionOnPushRaw()
-    {
-        $producer = $this->createMock(AmqpProducer::class);
-        $producer
-            ->expects($this->once())
-            ->method('send')
-            ->willReturnCallback(function () {
-                throw new \LogicException('Something went wrong while sending a message');
-            });
-
-        $context = $this->createAmqpContext();
-        $context
-            ->expects($this->once())
-            ->method('createTopic')
-            ->willReturn($this->createMock(AmqpTopic::class));
-        $context
-            ->expects($this->once())
-            ->method('createMessage')
-            ->willReturn($this->createMock(AmqpMessage::class));
-        $context
-            ->expects($this->once())
-            ->method('createQueue')
-            ->willReturn($this->createMock(AmqpQueue::class));
-        $context
-            ->expects($this->once())
-            ->method('createProducer')
-            ->willReturn($producer);
-
-        $logger = $this->createMock(LoggerInterface::class);
-        $logger
-            ->expects($this->once())
-            ->method('error')
-            ->with('AMQP error while attempting pushRaw: Something went wrong while sending a message');
-
-        $container = new Container();
-        $container['log'] = $logger;
-
-        $queue = new RabbitMQQueue($context, $this->createDummyConfig());
-        $queue->setContainer($container);
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Error writing data to the connection with RabbitMQ');
-        $queue->pushRaw('thePayload', 'aQueue');
     }
 
     public function testShouldReturnNullIfNoMessagesOnQueue()
@@ -303,7 +258,7 @@ class RabbitMQQueueTest extends TestCase
             ->with($this->identicalTo($queue))
             ->willReturn($consumer);
 
-        $queue = new RabbitMQQueue($context, $this->createDummyConfig());
+        $queue = new RabbitQueue($context, $this->createDummyConfig());
         $queue->setContainer($this->createDummyContainer());
 
         $this->assertNull($queue->pop('aQueue'));
@@ -340,56 +295,12 @@ class RabbitMQQueueTest extends TestCase
             ->with($this->identicalTo($queue))
             ->willReturn($consumer);
 
-        $queue = new RabbitMQQueue($context, $this->createDummyConfig());
+        $queue = new RabbitQueue($context, $this->createDummyConfig());
         $queue->setContainer($this->createDummyContainer());
 
         $job = $queue->pop('aQueue');
 
-        $this->assertInstanceOf(RabbitMQJob::class, $job);
-    }
-
-    public function testShouldLogExceptionOnPop()
-    {
-        $queue = $this->createMock(AmqpQueue::class);
-
-        $consumer = $this->createMock(AmqpConsumer::class);
-        $consumer
-            ->expects($this->once())
-            ->method('receiveNoWait')
-            ->willReturnCallback(function () {
-                throw new \LogicException('Something went wrong while receiving a message');
-            });
-
-        $context = $this->createAmqpContext();
-        $context
-            ->expects($this->once())
-            ->method('createTopic')
-            ->willReturn($this->createMock(AmqpTopic::class));
-        $context
-            ->expects($this->once())
-            ->method('createQueue')
-            ->willReturn($queue);
-        $context
-            ->expects($this->once())
-            ->method('createConsumer')
-            ->with($this->identicalTo($queue))
-            ->willReturn($consumer);
-
-        $logger = $this->createMock(LoggerInterface::class);
-        $logger
-            ->expects($this->once())
-            ->method('error')
-            ->with('AMQP error while attempting pop: Something went wrong while receiving a message');
-
-        $container = new Container();
-        $container['log'] = $logger;
-
-        $queue = new RabbitMQQueue($context, $this->createDummyConfig());
-        $queue->setContainer($container);
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Error writing data to the connection with RabbitMQ');
-        $queue->pop('aQueue');
+        $this->assertInstanceOf(RabbitJob::class, $job);
     }
 
     /**
@@ -419,19 +330,21 @@ class RabbitMQQueueTest extends TestCase
             'dsn' => 'aDsn',
             'host' => 'aHost',
             'port' => 'aPort',
-            'login' => 'aLogin',
-            'password' => 'aPassword',
+            'user' => 'aLogin',
+            'pass' => 'aPassword',
             'vhost' => 'aVhost',
-            'ssl_params' => [
-                'ssl_on' => 'aSslOn',
-                'verify_peer' => 'aVerifyPeer',
-                'cafile' => 'aCafile',
-                'local_cert' => 'aLocalCert',
-                'local_key'  => 'aLocalKey',
+            'queue' => 'aQueueName',
+            'exchange' => 'anExchangeName',
+            'connection' => [
+                'ssl_on'         => 'aSslOn',
+                'ssl_verify'     => 'aVerifyPeer',
+                'ssl_cacert'     => 'aCafile',
+                'ssl_cert'       => 'aLocalCert',
+                'ssl_key'        => 'aLocalKey',
+                'ssl_passphrase' => 'aLocalPassphrase',
             ],
             'options' => [
                 'exchange' => [
-                    'name' => 'anExchangeName',
                     'declare' => false,
                     'type' => \Interop\Amqp\AmqpTopic::TYPE_DIRECT,
                     'passive' => false,
@@ -440,7 +353,6 @@ class RabbitMQQueueTest extends TestCase
                 ],
 
                 'queue' => [
-                    'name' => 'aQueueName',
                     'declare' => false,
                     'bind' => false,
                     'passive' => false,
@@ -449,8 +361,7 @@ class RabbitMQQueueTest extends TestCase
                     'auto_delete' => false,
                     'arguments' => '[]',
                 ],
-            ],
-            'sleep_on_error' => false,
+            ]
         ];
     }
 }

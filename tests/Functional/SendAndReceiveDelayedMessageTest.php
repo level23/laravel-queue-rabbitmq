@@ -1,64 +1,26 @@
 <?php
 
-namespace VladimirYuldashev\LaravelQueueRabbitMQ\Tests\Functional;
+namespace Level23\Rabbit\Tests\Functional;
 
 use Psr\Log\NullLogger;
-use PHPUnit\Framework\TestCase;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Container\Container;
 use Enqueue\AmqpLib\AmqpConnectionFactory;
-use VladimirYuldashev\LaravelQueueRabbitMQ\Queue\RabbitMQQueue;
-use VladimirYuldashev\LaravelQueueRabbitMQ\Queue\Jobs\RabbitMQJob;
-use VladimirYuldashev\LaravelQueueRabbitMQ\Queue\Connectors\RabbitMQConnector;
+use Level23\Rabbit\Queue\RabbitQueue;
+use Level23\Rabbit\Queue\Jobs\RabbitJob;
+use Level23\Rabbit\Queue\Connectors\RabbitConnector;
 
 /**
  * @group functional
  */
-class SendAndReceiveDelayedMessageTest extends TestCase
+class SendAndReceiveDelayedMessageTest extends FunctionalTestCase
 {
     public function test()
     {
-        $config = [
-            'factory_class' => AmqpConnectionFactory::class,
-            'dsn'      => null,
-            'host'     => getenv('HOST'),
-            'port'     => getenv('PORT'),
-            'login'    => 'guest',
-            'password' => 'guest',
-            'vhost'    => '/',
-            'options' => [
-                'exchange' => [
-                    'name' => null,
-                    'declare' => true,
-                    'type' => \Interop\Amqp\AmqpTopic::TYPE_DIRECT,
-                    'passive' => false,
-                    'durable' => true,
-                    'auto_delete' => false,
-                ],
+        $config = $this->getDefaultConfig();
 
-                'queue' => [
-                    'name' => 'default',
-                    'declare' => true,
-                    'bind' => true,
-                    'passive' => false,
-                    'durable' => true,
-                    'exclusive' => false,
-                    'auto_delete' => false,
-                    'arguments' => '[]',
-                ],
-            ],
-            'ssl_params' => [
-                'ssl_on'        => false,
-                'cafile'        => null,
-                'local_cert'    => null,
-                'local_key'     => null,
-                'verify_peer'   => true,
-                'passphrase'    => null,
-            ],
-        ];
-
-        $connector = new RabbitMQConnector(new Dispatcher());
-        /** @var RabbitMQQueue $queue */
+        $connector = new RabbitConnector(new Dispatcher());
+        /** @var RabbitQueue $queue */
         $queue = $connector->connect($config);
         $queue->setContainer($this->createDummyContainer());
 
@@ -79,17 +41,10 @@ class SendAndReceiveDelayedMessageTest extends TestCase
 
         $job = $queue->pop();
 
-        $this->assertInstanceOf(RabbitMQJob::class, $job);
+        $this->assertInstanceOf(RabbitJob::class, $job);
         $this->assertSame($expectedPayload, $job->getRawBody());
 
         $job->delete();
     }
 
-    private function createDummyContainer()
-    {
-        $container = new Container();
-        $container['log'] = new NullLogger();
-
-        return $container;
-    }
 }

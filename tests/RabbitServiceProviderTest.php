@@ -1,32 +1,32 @@
 <?php
 
-namespace VladimirYuldashev\LaravelQueueRabbitMQ\Tests;
+namespace Level23\Rabbit\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Illuminate\Queue\QueueManager;
 use Illuminate\Container\Container;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Contracts\Events\Dispatcher;
-use VladimirYuldashev\LaravelQueueRabbitMQ\Queue\Connectors\RabbitMQConnector;
-use VladimirYuldashev\LaravelQueueRabbitMQ\LaravelQueueRabbitMQServiceProvider;
+use Level23\Rabbit\Queue\Connectors\RabbitConnector;
+use Level23\Rabbit\RabbitServiceProvider;
 
-class LaravelQueueRabbitMQServiceProviderTest extends TestCase
+class RabbitServiceProviderTest extends TestCase
 {
     public function testShouldSubClassServiceProviderClass()
     {
-        $rc = new \ReflectionClass(LaravelQueueRabbitMQServiceProvider::class);
+        $rc = new \ReflectionClass(RabbitServiceProvider::class);
 
         $this->assertTrue($rc->isSubclassOf(ServiceProvider::class));
     }
 
     public function testShouldMergeQueueConfigOnRegister()
     {
-        $dir = realpath(__DIR__.'/../src');
+        $dir = realpath(__DIR__ . '/../Rabbit');
 
         //guard
         $this->assertDirectoryExists($dir);
 
-        $providerMock = $this->createPartialMock(LaravelQueueRabbitMQServiceProvider::class, ['mergeConfigFrom']);
+        $providerMock = $this->createPartialMock(RabbitServiceProvider::class, ['mergeConfigFrom']);
 
         $providerMock
             ->expects($this->once())
@@ -48,7 +48,7 @@ class LaravelQueueRabbitMQServiceProviderTest extends TestCase
             ->willReturnCallback(function ($driver, \Closure $resolver) use ($dispatcherMock) {
                 $connector = $resolver();
 
-                $this->assertInstanceOf(RabbitMQConnector::class, $connector);
+                $this->assertInstanceOf(RabbitConnector::class, $connector);
                 $this->assertAttributeSame($dispatcherMock, 'dispatcher', $connector);
             });
 
@@ -56,7 +56,7 @@ class LaravelQueueRabbitMQServiceProviderTest extends TestCase
         $app['queue'] = $queueMock;
         $app['events'] = $dispatcherMock;
 
-        $providerMock = new LaravelQueueRabbitMQServiceProvider($app);
+        $providerMock = new RabbitServiceProvider($app);
 
         $providerMock->boot();
     }

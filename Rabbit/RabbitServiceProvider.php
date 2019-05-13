@@ -1,12 +1,12 @@
 <?php
 
-namespace VladimirYuldashev\LaravelQueueRabbitMQ;
+namespace Level23\Rabbit;
 
 use Illuminate\Queue\QueueManager;
 use Illuminate\Support\ServiceProvider;
-use VladimirYuldashev\LaravelQueueRabbitMQ\Queue\Connectors\RabbitMQConnector;
+use Level23\Rabbit\Queue\Connectors\RabbitConnector;
 
-class LaravelQueueRabbitMQServiceProvider extends ServiceProvider
+class RabbitServiceProvider extends ServiceProvider
 {
     /**
      * Register the service provider.
@@ -31,7 +31,7 @@ class LaravelQueueRabbitMQServiceProvider extends ServiceProvider
         $queue = $this->app['queue'];
 
         $queue->addConnector('rabbitmq', function () {
-            return new RabbitMQConnector($this->app['events']);
+            return new RabbitConnector($this->app['events']);
         });
     }
 }

@@ -1,6 +1,6 @@
 <?php
 
-namespace VladimirYuldashev\LaravelQueueRabbitMQ\Tests\Mock;
+namespace Level23\Rabbit\Tests\Mock;
 
 use Interop\Queue\Context;
 use Enqueue\AmqpTools\DelayStrategy;

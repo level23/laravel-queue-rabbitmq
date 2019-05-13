@@ -1,6 +1,6 @@
 <?php
 
-namespace VladimirYuldashev\LaravelQueueRabbitMQ\Queue\Jobs;
+namespace Level23\Rabbit\Queue\Jobs;
 
 use Exception;
 use Illuminate\Support\Str;
@@ -9,15 +9,11 @@ use Illuminate\Queue\Jobs\Job;
 use Interop\Amqp\AmqpConsumer;
 use Illuminate\Queue\Jobs\JobName;
 use Illuminate\Container\Container;
-use Illuminate\Database\DetectsDeadlocks;
 use Illuminate\Contracts\Queue\Job as JobContract;
-use VladimirYuldashev\LaravelQueueRabbitMQ\Queue\RabbitMQQueue;
-use VladimirYuldashev\LaravelQueueRabbitMQ\Horizon\RabbitMQQueue as HorizonRabbitMQQueue;
+use Level23\Rabbit\Queue\RabbitQueue;
 
-class RabbitMQJob extends Job implements JobContract
+class RabbitJob extends Job implements JobContract
 {
-    use DetectsDeadlocks;
-
     /**
      * Same as RabbitMQQueue, used for attempt counts.
      */
@@ -25,11 +21,15 @@ class RabbitMQJob extends Job implements JobContract
 
     protected $connection;
     protected $consumer;
+
+    /**
+     * @var \Interop\Amqp\AmqpMessage
+     */
     protected $message;
 
     public function __construct(
         Container $container,
-        RabbitMQQueue $connection,
+        RabbitQueue $connection,
         AmqpConsumer $consumer,
         AmqpMessage $message
     ) {
@@ -42,36 +42,6 @@ class RabbitMQJob extends Job implements JobContract
     }
 
     /**
-     * Fire the job.
-     *
-     * @throws Exception
-     *
-     * @return void
-     */
-    public function fire(): void
-    {
-        try {
-            $payload = $this->payload();
-
-            [$class, $method] = JobName::parse($payload['job']);
-
-            with($this->instance = $this->resolve($class))->{$method}($this, $payload['data']);
-        } catch (Exception $exception) {
-            if (
-                $this->causedByDeadlock($exception) ||
-                Str::contains($exception->getMessage(), ['detected deadlock'])
-            ) {
-                sleep(2);
-                $this->fire();
-
-                return;
-            }
-
-            throw $exception;
-        }
-    }
-
-    /**
      * Get the number of times the job has been attempted.
      *
      * @return int
@@ -79,9 +49,7 @@ class RabbitMQJob extends Job implements JobContract
     public function attempts(): int
     {
         // set default job attempts to 1 so that jobs can run without retry
-        $defaultAttempts = 1;
-
-        return $this->message->getProperty(self::ATTEMPT_COUNT_HEADERS_KEY, $defaultAttempts);
+        return $this->message->getProperty(self::ATTEMPT_COUNT_HEADERS_KEY, 1);
     }
 
     /**
@@ -94,27 +62,37 @@ class RabbitMQJob extends Job implements JobContract
         return $this->message->getBody();
     }
 
-    /** {@inheritdoc} */
+    /**
+     * Delete the job from the queue.
+     *
+     * @return void
+     */
     public function delete(): void
     {
         parent::delete();
 
         $this->consumer->acknowledge($this->message);
-
-        // required for Laravel Horizon
-        if ($this->connection instanceof HorizonRabbitMQQueue) {
-            $this->connection->deleteReserved($this->queue, $this);
-        }
     }
 
-    /** {@inheritdoc}
-     * @throws Exception
+    /**
+     * Release the job back into the queue.
+     *
+     * Accepts a delay specified in seconds.
+     *
+     * @param  int   $delay
+     * @return void
      */
     public function release($delay = 0): void
     {
         parent::release($delay);
 
-        $this->delete();
+        // Acknowledge the message
+        $this->consumer->acknowledge($this->message);
+
+        $this->message->setProperty(static::ATTEMPT_COUNT_HEADERS_KEY, $this->attempts() + 1);
+
+        var_dump($this->message);
+        die();
 
         $body = $this->payload();
 
@@ -128,6 +106,8 @@ class RabbitMQJob extends Job implements JobContract
         }
 
         $data = $body['data'];
+
+//        $this->connection->pushRaw($)
 
         $this->connection->release($delay, $job, $data, $this->getQueue(), $this->attempts() + 1);
     }
